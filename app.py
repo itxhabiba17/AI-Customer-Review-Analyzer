@@ -1,4 +1,5 @@
 import json
+import os
 
 import pandas as pd
 import plotly.express as px
@@ -25,6 +26,16 @@ def get_available_models(api_key):
     ids = [m.id for m in client.models.list().data]
     skip = ["whisper", "guard", "tts", "playai", "orpheus", "embed"]
     return sorted(i for i in ids if not any(word in i.lower() for word in skip))
+
+
+def load_api_key():
+    """Read the Groq key from Streamlit secrets or an environment variable (developer only)."""
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            return st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass  # no secrets file found, try the environment variable next
+    return os.environ.get("GROQ_API_KEY", "")
 
 
 def find_review_column(df):
@@ -98,20 +109,22 @@ def generate_insights(client, model, reviews, counts):
 # Sidebar
 # ---------------------------------------------------------------
 st.sidebar.title("⚙️ Settings")
-api_key = st.sidebar.text_input("Groq API Key", type="password", help="Get a free key at console.groq.com")
+api_key = load_api_key()  # set by the developer, users never see or enter it
 uploaded_file = st.sidebar.file_uploader("Upload a CSV file of reviews", type=["csv"])
 
 model = None
-if api_key:
+if not api_key:
+    st.sidebar.error("❌ The app is not configured yet. The developer must add the Groq API key.")
+else:
     try:
         models = get_available_models(api_key)
         if not models:
-            st.sidebar.error("No chat models found for this API key.")
+            st.sidebar.error("❌ No chat models are available for the configured API key.")
         else:
-            default = models.index("llama-3.3-70b-versatile") if "llama-3.3-70b-versatile" in models else 0
-            model = st.sidebar.selectbox("AI Model", models, index=default)
+            # Use the best known model if available, otherwise the first one in the list
+            model = "llama-3.3-70b-versatile" if "llama-3.3-70b-versatile" in models else models[0]
     except Exception:
-        st.sidebar.error("❌ Invalid API key or could not connect to Groq.")
+        st.sidebar.error("❌ The configured API key is invalid or Groq could not be reached.")
 
 max_reviews = st.sidebar.slider("Maximum reviews to analyze", 10, 500, 100, step=10)
 analyze_clicked = st.sidebar.button("🚀 Analyze Reviews", use_container_width=True)
@@ -163,10 +176,10 @@ review_col = st.selectbox(
 # ---- Run the analysis ----
 if analyze_clicked:
     if not api_key:
-        st.error("❌ Please enter your Groq API key in the sidebar.")
+        st.error("❌ The Groq API key is missing. Please contact the app developer.")
         st.stop()
     if model is None:
-        st.error("❌ The API key is invalid, so the analysis cannot start.")
+        st.error("❌ The AI service is not available right now. Please contact the app developer.")
         st.stop()
 
     reviews = df[review_col].dropna().astype(str).str.strip()
@@ -196,7 +209,7 @@ if analyze_clicked:
         st.session_state["result_df"] = result_df
         st.session_state["insights"] = insights
     except Exception as e:
-        st.error(f"❌ Analysis failed. Check your API key and internet connection. ({e})")
+        st.error(f"❌ Analysis failed. Please try again later. ({e})")
         st.stop()
 
 # ---------------------------------------------------------------
