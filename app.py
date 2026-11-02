@@ -127,10 +127,18 @@ if uploaded_file is None:
     st.stop()
 
 # ---- Read the CSV ----
-try:
-    df = pd.read_csv(uploaded_file)
-except Exception as e:
-    st.error(f"❌ Could not read the CSV file. Please upload a valid CSV. ({e})")
+df = None
+last_error = None
+for encoding in ["utf-8", "utf-8-sig", "cp1252", "latin-1"]:
+    try:
+        uploaded_file.seek(0)  # go back to the start of the file before each try
+        df = pd.read_csv(uploaded_file, encoding=encoding)
+        break
+    except Exception as e:
+        last_error = e
+
+if df is None:
+    st.error(f"❌ Could not read the CSV file. Please upload a valid CSV. ({last_error})")
     st.stop()
 
 if df.empty:
